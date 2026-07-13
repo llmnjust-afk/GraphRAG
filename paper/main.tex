@@ -31,6 +31,8 @@ Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language mo
 
 \keywords{GraphRAG, Incremental Indexing, Knowledge Graph, Retrieval-Augmented Generation}
 
+\maketitle
+
 \section{Introduction}
 
 Retrieval-Augmented Generation (RAG) mitigates LLM hallucinations by grounding responses in retrieved external knowledge. While traditional vector RAG excels at factoid lookups, it struggles with global questions requiring cross-document reasoning---questions such as ``What are the main themes across this document collection?'' or ``How are these entities related?'' GraphRAG addresses this limitation by constructing knowledge graphs from text corpora, enabling structured multi-hop retrieval and community-level summarization~\cite{edge2024graphrag,guo2025lightrag}. By organizing entities and their relationships into a graph index, GraphRAG systems can answer queries that require synthesizing information across multiple documents, which flat vector retrieval cannot handle effectively.
