@@ -1,5 +1,14 @@
 \documentclass[sigconf,anonymous,review]{acmart}
 
+%% KDD 2027 required acmart settings for anonymous review submission
+\setcopyright{none}
+\settopmatter{printacmref=false}
+\settopmatter{printfolios=true}
+\acmConference[KDD 2027]{Proceedings of the 33rd ACM SIGKDD Conference on Knowledge Discovery and Data Mining}{August 1--5, 2027}{San Jose, CA, USA}
+\acmISBN{}
+\acmDOI{}
+
+%% Additional packages
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{amsmath}
@@ -11,8 +20,10 @@
 
 \title{IGV: Incremental Graph Versioning for Efficient\\Retrieval-Augmented Generation over Evolving Corpora}
 
-\author{Anonymous}
-\affiliation{\institution{Anonymous Institution}}
+\author{Anonymous Author(s)}
+\affiliation{\institution{Anonymous Institution}
+\city{Anonymous City}
+\country{Anonymous Country}}
 
 \begin{abstract}
 Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language models (LLMs) by structuring document corpora as knowledge graphs, enabling multi-hop reasoning and global question answering. However, existing GraphRAG systems require expensive full-graph rebuilds when new documents arrive, making them impractical for dynamic, evolving corpora. We present IGV (Incremental Graph Versioner), a framework that supports efficient incremental updates to GraphRAG indexes through three innovations: (1) embedding-based semantic entity deduplication that merges duplicate entities across documents, reducing entity count by 13--17\%, (2) multi-hop graph relinking that connects new entities to the existing graph structure, and (3) incremental community repartitioning that locally updates community assignments without full recomputation. Experiments on five multi-hop QA datasets with Qwen2.5-7B-Instruct across three random seeds and 200 evaluation questions per dataset demonstrate that IGV achieves Graph Quality Degradation (GQD) below 6.6\% relative to full rebuild, with near-zero forgetting rate (FR$<$0.01) and sub-9\% R@5 degradation over 12 incremental batches. Statistical significance tests confirm F1 improvements over naive incremental baselines ($p<0.05$, paired t-test).
@@ -345,65 +356,6 @@ The progressive ablation from B2$\to$B3$\to$B4$\to$IGV isolates the contribution
 We presented IGV, an incremental GraphRAG framework that supports efficient corpus updates through three innovations: semantic entity deduplication, graph relinking, and incremental community repartitioning. Experiments on five multi-hop QA datasets with three random seeds and 200 evaluation questions demonstrate that IGV reduces entity redundancy by 13--17\% while achieving GQD below 6.6\% relative to full rebuild. On 2Wiki, IGV \emph{outperforms} full rebuild by 1.5\% in R@5, demonstrating that deduplication can improve retrieval quality beyond rebuild. The forgetting rate is near zero (FR$<$0.01) across all datasets, confirming that incremental updates do not lose access to old content. Statistical significance tests confirm F1 improvements ($p<0.05$), and long-term streaming over 12 batches with four ablation methods shows that deduplication is the key innovation preventing quality drift (reducing R@5 drift from 18.4\% to 7.7\% on HotpotQA). IGV enables practical GraphRAG deployment in dynamic environments where corpora evolve continuously.
 
 \bibliographystyle{ACM-Reference-Format}
-\begin{thebibliography}{99}
-
-\bibitem{edge2024graphrag}
-D.~Edge, H.~Trinh, N.~Cheng, et~al.
-\newblock From local to global: A graphrag approach to query-focused
-  summarization.
-\newblock \emph{arXiv preprint arXiv:2404.16130}, 2024.
-
-\bibitem{guo2025lightrag}
-Z.~Guo, L.~Xia, Y.~Yu, et~al.
-\newblock Lightrag: Simple and fast retrieval-augmented generation.
-\newblock In \emph{EMNLP 2025 Findings}, pages 10746--10761, 2025.
-
-\bibitem{chen2026pathrag}
-B.~Chen, Z.~Guo, Z.~Yang, et~al.
-\newblock Pathrag: Pruning graph-based retrieval augmented generation with
-  relational paths.
-\newblock In \emph{AAAI 2026}, volume 40, pages 30183--30191, 2026.
-
-\bibitem{gutierrez2024hipporag}
-B.~Jim{\'e}nez Guti{\'e}rrez, Y.~Shu, Y.~Gu, et~al.
-\newblock Hipporag: Neurobiologically inspired long-term memory for large
-  language models.
-\newblock In \emph{NeurIPS 2024}, 2024.
-
-\bibitem{wang2025gorag}
-Y.~Wang, H.~Li, F.~Teng, and L.~Chen.
-\newblock Gorag: Graph-based online retrieval augmented generation for dynamic
-  few-shot social media text classification.
-\newblock \emph{arXiv preprint arXiv:2501.02844}, 2025.
-
-\bibitem{liang2024kag}
-L.~Liang, M.~Sun, et~al.
-\newblock Kag: Boosting llms in professional domains via knowledge augmented
-  generation.
-\newblock \emph{arXiv preprint arXiv:2409.13731}, 2024.
-
-\bibitem{min2025practical}
-C.~Min, S.~Bansal, J.~Pan, et~al.
-\newblock Towards practical graphrag: Efficient knowledge graph construction
-  and hybrid retrieval at scale.
-\newblock \emph{arXiv preprint arXiv:2507.03226}, 2025.
-
-\bibitem{mavromatis2025gnnrag}
-C.~Mavromatis and G.~Karypis.
-\newblock Gnn-rag: Graph neural retrieval for large language model reasoning
-  on knowledge graphs.
-\newblock In \emph{ACL 2025 Findings}, pages 16682--16699, 2025.
-
-\bibitem{blondel2008louvain}
-V.~D. Blondel, J.-L. Guillaume, R.~Lambiotte, and E.~Lefebvre.
-\newblock Fast unfolding of communities in large networks.
-\newblock \emph{Journal of Statistical Mechanics}, 2008(10):P10008, 2008.
-
-\bibitem{traag2019leiden}
-V.~A. Traag, L.~Waltman, and N.~J. van Eck.
-\newblock From louvain to leiden: guaranteeing well-connected communities.
-\newblock \emph{Scientific Reports}, 9:5233, 2019.
-
-\end{thebibliography}
+\bibliography{refs}
 
 \end{document}
