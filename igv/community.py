@@ -14,7 +14,7 @@ try:
 except ImportError:
     raise ImportError("networkx>=3.0 required for IGV community detection")
 
-from .dedup import simhash_hit, _simhash_fingerprint, _token_ngrams
+
 
 
 def detect_communities(

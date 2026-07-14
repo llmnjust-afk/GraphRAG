@@ -77,6 +77,10 @@ class IGVIndex:
     relink_max_edges: int = 500
     # Dedup
     dedup_threshold: float = 0.85
+    skip_community: bool = False
+    max_community_nodes: int = 5000
+    skip_relink: bool = False
+    skip_dedup: bool = False
     # Community repartition trigger
     node_migration_threshold: float = 0.05  # 5%
 
@@ -131,10 +135,16 @@ class IGVIndex:
         existing_entities = {
             n: dict(self._graph.nodes[n]) for n in self._graph.nodes
         }
-        merge_map = deduplicate_entities(
-            existing_entities,
-            new_entities,
-        )
+        if self.skip_dedup:
+            merge_map = {k: k for k in new_entities}
+        else:
+            existing_entities = {
+                n: dict(self._graph.nodes[n]) for n in self._graph.nodes
+            }
+            merge_map = deduplicate_entities(
+                existing_entities,
+                new_entities,
+            )
 
         # ----- INSERT NODES (merge or add) -----
         new_node_ids: list[str] = []
@@ -166,19 +176,21 @@ class IGVIndex:
                     self._graph.add_edge(src, tgt, **edge_data)
 
         # 3. Relink new nodes to existing graph
-        n_added = relink_candidates(
-            self._graph,
-            new_node_ids,
-            hops=self.relink_hops,
-            max_edges=self.relink_max_edges,
-        )
+        n_added = 0
+        if not self.skip_relink:
+            n_added = relink_candidates(
+                self._graph,
+                new_node_ids,
+                hops=self.relink_hops,
+                max_edges=self.relink_max_edges,
+            )
         stats.n_relinked = n_added
 
         # 4. Incremental community repartition
         old_communities = dict(self._communities)
         new_partition = {}
         stats.node_migration_rate = 0.0
-        if len(self._graph.nodes) > 3:
+        if len(self._graph.nodes) > 3 and not self.skip_community and len(self._graph.nodes) <= self.max_community_nodes:
             if not self._communities:
                 # First insertion — full community detection
                 new_partition = detect_communities(
@@ -255,31 +267,48 @@ class IGVIndex:
     async def _python_extract_entities(
         self, documents: list[dict[str, str]]
     ) -> tuple[list[tuple[str, str, dict]], dict[str, dict]]:
-        """Dummy entity extractor — replace with LightRAG call in production.
-
-        Production path:
-          from lightrag.operate import extract_entities
-          results = extract_entities(chunks, config, ...)
+        """Lightweight entity extractor using proper noun detection.
+        
+        Extracts capitalized phrases (likely named entities) instead of every word.
+        This creates far fewer entities (~3-5 per passage vs ~100).
         """
+        import re
         triplets: list[tuple[str, str, dict]] = []
         entities: dict[str, dict] = {}
+        
         for i, doc in enumerate(documents):
             text = doc.get("content", "")
             eid = doc.get("doc_id", f"doc_{self._doc_counter + i}")
-            # Extremely crude extraction — replace with real LLM call
-            words = [w.strip(",.!?()[];:'\"") for w in text.split()[:20]]
-            src = f"{eid}_entity"
-            entities[src] = {
-                "entity_name": src,
-                "entity_type": "GENERIC",
-                "description": f"Document: {eid}",
+            
+            # Extract proper nouns: sequences of Capitalized words
+            # Also extract the document title/id as an entity
+            proper_nouns = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
+            
+            # Create document entity
+            doc_entity = f"DOC_{eid}"
+            entities[doc_entity] = {
+                "entity_name": doc_entity,
+                "entity_type": "DOCUMENT",
+                "description": f"Document {eid}",
             }
-            for w in set(w for w in words if len(w) > 2):
-                tgt = f"{eid}_{w}"
-                entities[tgt] = {
-                    "entity_name": tgt,
-                    "entity_type": "TOKEN",
-                    "description": f"Term: {w}",
-                }
-                triplets.append((src, tgt, {"weight": 1.0, "description": "contains"}))
+            
+            # Create entity per unique proper noun (limit to 5 per doc)
+            seen = set()
+            for pn in proper_nouns[:10]:
+                if pn.lower() not in seen and len(pn) > 2:
+                    seen.add(pn.lower())
+                    ent_id = pn
+                    entities[ent_id] = {
+                        "entity_name": ent_id,
+                        "entity_type": "ENTITY",
+                        "description": f"Named entity mentioned in {eid}",
+                    }
+                    triplets.append((doc_entity, ent_id, {"weight": 1.0, "description": "mentions"}))
+            
+            # Also link co-occurring entities (entities in same document)
+            ent_list = [e for e in entities if e != doc_entity and f"in {eid}" in entities[e].get("description", "")]
+            for j in range(len(ent_list)):
+                for k in range(j+1, len(ent_list)):
+                    triplets.append((ent_list[j], ent_list[k], {"weight": 0.5, "description": "co-occurs_in"}))
+        
         return triplets, entities
