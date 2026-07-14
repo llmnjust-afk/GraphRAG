@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+*.log
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+/tmp/
