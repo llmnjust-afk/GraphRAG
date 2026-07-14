@@ -1,0 +1,70 @@
+=== IGV V2: Full Pipeline Experiments ===
+
+Loading Qwen2.5-7B-Instruct...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:09,  2.61it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:07, 42.32it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:04, 65.43it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:03, 82.67it/s]Loading weights:  19%|█▊        | 63/339 [00:00<00:02, 112.72it/s]Loading weights:  23%|██▎       | 77/339 [00:00<00:02, 117.44it/s]Loading weights:  27%|██▋       | 91/339 [00:01<00:02, 121.43it/s]Loading weights:  33%|███▎      | 112/339 [00:01<00:01, 139.60it/s]Loading weights:  37%|███▋      | 127/339 [00:01<00:01, 130.63it/s]Loading weights:  42%|████▏     | 144/339 [00:01<00:01, 140.13it/s]Loading weights:  47%|████▋     | 159/339 [00:01<00:01, 138.25it/s]Loading weights:  51%|█████▏    | 174/339 [00:01<00:01, 130.17it/s]Loading weights:  58%|█████▊    | 196/339 [00:01<00:00, 147.02it/s]Loading weights:  62%|██████▏   | 211/339 [00:01<00:00, 134.62it/s]Loading weights:  68%|██████▊   | 232/339 [00:02<00:00, 145.67it/s]Loading weights:  73%|███████▎  | 247/339 [00:02<00:00, 136.26it/s]Loading weights:  79%|███████▉  | 268/339 [00:02<00:00, 149.49it/s]Loading weights:  84%|████████▍ | 284/339 [00:02<00:00, 141.53it/s]Loading weights:  90%|████████▉ | 304/339 [00:02<00:00, 150.27it/s]Loading weights:  94%|█████████▍| 320/339 [00:02<00:00, 141.45it/s]Loading weights: 100%|██████████| 339/339 [00:02<00:00, 124.70it/s]
+✅ Model loaded on GPU
+
+============================================================
+  HotpotQA | 2000 passages | 500 questions
+============================================================
+
+  HotpotQA | B1_rebuild | seed=42
+  [42] B1_rebuild FINAL: ents=13934 R@5=0.185 F1=0.269 2484.4s
+
+  HotpotQA | B2_naive | seed=42
+  [42] B2_naive base: ents=10151 R@5=0.160 F1=0.303 1761.3s
+  [42] B2_naive inc1: ents=11396 245.9s
+  [42] B2_naive inc2: ents=12649 233.1s
+  [42] B2_naive inc3: ents=13952 261.5s R@5=0.160 F1=0.293
+
+  HotpotQA | B3_dedup | seed=42
+  [42] B3_dedup base: ents=10138 R@5=0.160 F1=0.317 1747.1s
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 5012.45it/s]
+  [42] B3_dedup inc1: ents=11337 248.8s
+  [42] B3_dedup inc2: ents=12576 236.9s
+  [42] B3_dedup inc3: ents=13832 266.1s R@5=0.160 F1=0.308
+
+  HotpotQA | B4_relink | seed=42
+  [42] B4_relink base: ents=10146 R@5=0.165 F1=0.284 1749.8s
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 5021.89it/s]
+  [42] B4_relink inc1: ents=11354 248.3s
+  [42] B4_relink inc2: ents=12590 236.5s
+  [42] B4_relink inc3: ents=13847 264.5s R@5=0.155 F1=0.297
+
+  HotpotQA | IGV | seed=42
+  [42] IGV base: ents=10142 R@5=0.165 F1=0.287 1738.9s
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 4768.15it/s]
+  [42] IGV inc1: ents=11356 256.1s
+  [42] IGV inc2: ents=12596 240.8s
+  [42] IGV inc3: ents=13848 268.0s R@5=0.160 F1=0.291
+
+============================================================
+  2Wiki | 1500 passages | 300 questions
+============================================================
+
+  2Wiki | B1_rebuild | seed=42
+  [42] B1_rebuild FINAL: ents=9311 R@5=0.235 F1=0.288 1593.7s
+
+  2Wiki | B2_naive | seed=42
+  [42] B2_naive base: ents=6790 R@5=0.223 F1=0.247 1110.2s
+  [42] B2_naive inc1: ents=7579 146.3s
+  [42] B2_naive inc2: ents=8456 171.9s
+  [42] B2_naive inc3: ents=9306 161.9s R@5=0.233 F1=0.280
+
+  2Wiki | B3_dedup | seed=42
+  [42] B3_dedup base: ents=6796 R@5=0.223 F1=0.235 1113.5s
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 4812.07it/s]
+  [42] B3_dedup inc1: ents=7552 146.7s
+  [42] B3_dedup inc2: ents=8402 172.1s
+  [42] B3_dedup inc3: ents=9225 164.1s R@5=0.228 F1=0.281
+
+  2Wiki | B4_relink | seed=42
+  [42] B4_relink base: ents=6796 R@5=0.228 F1=0.242 1113.6s
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 4939.21it/s]
+  [42] B4_relink inc1: ents=7560 149.9s
+  [42] B4_relink inc2: ents=8410 173.5s
+  [42] B4_relink inc3: ents=9233 163.7s R@5=0.237 F1=0.287
+
+  2Wiki | IGV | seed=42
