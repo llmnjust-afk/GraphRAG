@@ -1,6 +1,5 @@
 \documentclass[sigconf,anonymous,review]{acmart}
 
-%% KDD 2027 required acmart settings for anonymous review submission
 \setcopyright{none}
 \settopmatter{printacmref=false}
 \settopmatter{printfolios=true}
@@ -8,13 +7,11 @@
 \acmISBN{}
 \acmDOI{}
 
-%% Additional packages
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{multirow}
-\usepackage{algorithm}
-\usepackage{algpseudocode}
+\usepackage{placeins}
 
 \begin{document}
 
@@ -26,7 +23,7 @@
 \country{Anonymous Country}}
 
 \begin{abstract}
-Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language models (LLMs) by structuring document corpora as knowledge graphs, enabling multi-hop reasoning and global question answering. However, existing GraphRAG systems require expensive full-graph rebuilds when new documents arrive, making them impractical for dynamic, evolving corpora. We present IGV (Incremental Graph Versioner), a framework that supports efficient incremental updates to GraphRAG indexes through three innovations: (1) embedding-based semantic entity deduplication that merges duplicate entities across documents, reducing entity count by 13--17\%, (2) multi-hop graph relinking that connects new entities to the existing graph structure, and (3) incremental community repartitioning that locally updates community assignments without full recomputation. Experiments on five multi-hop QA datasets with Qwen2.5-7B-Instruct across three random seeds and 200 evaluation questions per dataset demonstrate that IGV achieves Graph Quality Degradation (GQD) below 6.6\% relative to full rebuild, with near-zero forgetting rate (FR$<$0.01) and sub-9\% R@5 degradation over 12 incremental batches. Statistical significance tests confirm F1 improvements over naive incremental baselines ($p<0.05$, paired t-test).
+Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language models (LLMs) by structuring document corpora as knowledge graphs, enabling multi-hop reasoning and global question answering. However, existing GraphRAG systems require expensive full-graph rebuilds when new documents arrive, making them impractical for dynamic, evolving corpora. We present IGV (Incremental Graph Versioner), a framework that supports efficient incremental updates to GraphRAG indexes through three components: (1) embedding-based semantic entity deduplication, (2) embedding-based graph relinking, and (3) incremental community repartitioning with community summary generation for global QA retrieval. Experiments on five multi-hop QA datasets with LLM-based entity extraction (Qwen2.5-7B-Instruct) across 2,000 passages and 120 evaluation questions per dataset demonstrate that IGV achieves 10$\times$ faster updates than full rebuild while maintaining factoid QA quality. Critically, IGV's community summary retrieval improves global QA F1 by 13--93\% over naive incremental baselines on 3/5 datasets, and even surpasses VectorRAG on streaming corpora. All methods share cached LLM entity extractions, ensuring fair ablation comparisons.
 \end{abstract}
 
 \keywords{GraphRAG, Incremental Indexing, Knowledge Graph, Retrieval-Augmented Generation}
@@ -35,82 +32,55 @@ Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language mo
 
 \section{Introduction}
 
-Retrieval-Augmented Generation (RAG) mitigates LLM hallucinations by grounding responses in retrieved external knowledge. While traditional vector RAG excels at factoid lookups, it struggles with global questions requiring cross-document reasoning---questions such as ``What are the main themes across this document collection?'' or ``How are these entities related?'' GraphRAG addresses this limitation by constructing knowledge graphs from text corpora, enabling structured multi-hop retrieval and community-level summarization~\cite{edge2024graphrag,guo2025lightrag}. By organizing entities and their relationships into a graph index, GraphRAG systems can answer queries that require synthesizing information across multiple documents, which flat vector retrieval cannot handle effectively.
+Retrieval-Augmented Generation (RAG) mitigates LLM hallucinations by grounding responses in retrieved external knowledge. While traditional vector RAG excels at factoid lookups, it struggles with global questions requiring cross-document reasoning---questions such as ``What are the main themes across this document collection?'' GraphRAG addresses this limitation by constructing knowledge graphs from text corpora, enabling structured multi-hop retrieval and community-level summarization~\cite{edge2024graphrag,guo2025lightrag}.
 
-A critical limitation of current GraphRAG systems is their reliance on \emph{full rebuilds} for corpus updates. Microsoft GraphRAG~\cite{edge2024graphrag} requires re-running entity extraction, community detection, and summary generation over the entire corpus when any new document arrives. For a 1M-token corpus, this costs over 280 minutes of LLM time and significant API expenditure. LightRAG~\cite{guo2025lightrag} introduced a set-union incremental update mechanism that avoids full rebuilds, but its naive merging approach creates three critical problems: (1) duplicate entities---the same real-world entity extracted from different documents with slightly different names creates redundant nodes; (2) graph fragmentation---new entities are added without connecting them to the existing graph structure, creating disconnected components; and (3) stale communities---community assignments computed on the initial corpus become outdated as new entities arrive, degrading global query performance.
+A critical limitation of current GraphRAG systems is their reliance on \emph{full rebuilds} for corpus updates. Microsoft GraphRAG~\cite{edge2024graphrag} requires re-running entity extraction over the entire corpus when any new document arrives. For a 5,000-passage corpus, this costs over 4.5 hours of LLM time. LightRAG~\cite{guo2025lightrag} introduced a set-union incremental update mechanism that avoids full rebuilds, but its naive merging approach creates three problems: (1) duplicate entities across documents, (2) disconnected graph components, and (3) stale community assignments that degrade global query performance.
 
-These problems compound over time: with each incremental batch, the graph becomes increasingly bloated with duplicates, fragmented across disconnected components, and organized into communities that no longer reflect the current graph structure. This degradation directly impacts retrieval quality---our experiments show that naive incremental updates cause R@5 to drift by up to 18\% after 12 batches on HotpotQA, while the full rebuild approach would require recomputing the entire index from scratch.
+We propose IGV (Incremental Graph Versioner), which addresses these problems through three components: semantic entity deduplication using sentence-transformer embeddings, embedding-based graph relinking that connects semantically similar entities, and incremental community repartitioning with LLM-generated community summaries for global QA retrieval. The key insight is that community summaries provide a thematic index for global questions, which factoid retrieval cannot serve effectively.
 
-We propose IGV (Incremental Graph Versioner), which addresses these three problems through corresponding innovations:
-\begin{itemize}
-\item \textbf{Semantic entity deduplication} using sentence-transformer embeddings with cosine similarity, reducing entity count by 13--17\% by merging entities that refer to the same real-world concept but were extracted with different surface forms.
-\item \textbf{Multi-hop graph relinking} that connects newly inserted entities to the existing graph via BFS-based candidate generation, ensuring graph connectivity and enabling cross-document reasoning paths.
-\item \textbf{Incremental community repartitioning} that locally updates Louvain community assignments for affected nodes only, maintaining community quality without the $O(N \log N)$ cost of full recomputation.
-\end{itemize}
-
-Experiments on five multi-hop QA datasets demonstrate that IGV achieves GQD below 6.6\% relative to full rebuild, with near-zero forgetting rate (FR$<$0.01). On 2Wiki, IGV \emph{outperforms} full rebuild by 1.5\% in R@5, showing that deduplication can actually improve retrieval quality. Statistical significance tests confirm F1 improvements ($p<0.05$), and long-term streaming over 12 batches with four ablation methods shows sub-9\% R@5 degradation.
+Experiments on five datasets demonstrate that IGV achieves: (1) 10$\times$ faster updates than full rebuild (UER=10.0), (2) factoid QA quality comparable to both full rebuild and naive incremental baselines, and (3) global QA improvements of 13--93\% over naive incremental on 3/5 datasets, with IGV surpassing VectorRAG on streaming corpora. A critical methodological contribution is that all methods share cached LLM entity extractions, eliminating the LLM non-determinism that invalidated prior ablation comparisons.
 
 \section{Related Work}
 
-\textbf{GraphRAG Systems.} Edge et al.~\cite{edge2024graphrag} proposed GraphRAG, which builds entity knowledge graphs via LLM extraction, applies Leiden community detection~\cite{traag2019leiden}, and generates community summaries for global query answering. Their system processes documents in two phases: offline indexing and online query. While effective for static corpora, the system requires complete re-indexing when new documents arrive. LightRAG~\cite{guo2025lightrag} simplified this with a dual-level retrieval paradigm and introduced basic incremental updates via set union. PathRAG~\cite{chen2026pathrag} introduced flow-based path pruning to reduce retrieval redundancy. HippoRAG~\cite{gutierrez2024hipporag} used Personalized PageRank for neurobiologically inspired retrieval. GNN-RAG~\cite{mavromatis2025gnnrag} combined graph neural networks with LLMs for KGQA. GRAG~\cite{hu2025grag} addressed networked document retrieval. ReGraphRAG~\cite{kim2025regraphrag} reorganized fragmented knowledge graphs. GFM-RAG~\cite{luo2025gfmrag} proposed a graph foundation model for RAG. LEGO-GraphRAG~\cite{cao2024lego} modularized the GraphRAG pipeline. Comprehensive surveys~\cite{peng2025graphsurvey,han2024graphrag} provide systematic overviews of the GraphRAG landscape. Think-on-Graph~\cite{sun2024tog} and its successor~\cite{ma2025tog2} proposed interactive KG reasoning with LLMs. Simple is Effective~\cite{li2025simple} analyzed the roles of graphs and LLMs in KG-based RAG. G-Retriever~\cite{he2024gretriever} enabled chatting with textual graphs.
+\textbf{GraphRAG Systems.} Edge et al.~\cite{edge2024graphrag} proposed GraphRAG, which builds entity knowledge graphs via LLM extraction, applies Leiden community detection~\cite{traag2019leiden}, and generates community summaries for global query answering. LightRAG~\cite{guo2025lightrag} simplified this with a dual-level retrieval paradigm and introduced basic incremental updates via set union. PathRAG~\cite{chen2026pathrag} introduced flow-based path pruning. HippoRAG~\cite{gutierrez2024hipporag} used Personalized PageRank for retrieval. GNN-RAG~\cite{mavromatis2025gnnrag} combined graph neural networks with LLMs. Comprehensive surveys~\cite{peng2025graphsurvey,han2024graphrag} provide systematic overviews.
 
-\textbf{RAG Fundamentals and Applications.} Lewis et al.~\cite{lewis2020rag} introduced RAG for knowledge-intensive NLP tasks. KG-guided RAG~\cite{zhu2025kguided} used KG semantics for query disambiguation. Paths-over-Graph~\cite{tan2025paths} extracted reasoning paths from KGs. Domain-specific applications include medical~\cite{wu2024junde,zhao2025medrag,liu2025detecting}, financial~\cite{sarmah2024hybridrag}, customer service~\cite{xu2024kgrag}, recommendation~\cite{wang2025kgragrec}, and multimodal~\cite{bu2025querydriven,lee2024multimodal,liang2024multimodal} settings. KG alignment~\cite{tian2025systematic} and personalization~\cite{prahlad2025personalizing} have also been explored. LLM-based KG construction~\cite{zhang2024extract,hofer2024construction} and hallucination reduction~\cite{agrawal2024hallucination} are active research areas. Graph-of-Thoughts~\cite{besta2024got}, MindMap~\cite{wen2024mindmap}, and graph neural prompting~\cite{tian2024gnn} bridge graph structures with LLM reasoning. Generate-on-Graph~\cite{yao2024gog} treats LLMs as both agent and KG.
+\textbf{RAG Fundamentals.} Lewis et al.~\cite{lewis2020rag} introduced RAG for knowledge-intensive NLP tasks. Domain-specific applications include medical~\cite{wu2024junde,zhao2025medrag}, financial~\cite{sarmah2024hybridrag}, and multimodal~\cite{bu2025querydriven,lee2024multimodal} settings. LLM-based KG construction~\cite{zhang2024extract,hofer2024construction} and hallucination reduction~\cite{agrawal2024hallucination} are active research areas.
 
-\textbf{Incremental and Continual Learning.} GORAG~\cite{wang2025gorag} proposed online graph updates for social media classification. KAG~\cite{liang2024kag} introduced logical-form-guided reasoning with schema constraints. Practical GraphRAG~\cite{min2025practical} reduced construction cost via dependency parsing. Continual graph learning~\cite{yuan2026continual} and dynamic GNNs~\cite{zheng2024dynamic} address evolving graph structures. Continual learning for LLMs~\cite{wu2024continual} surveys knowledge update strategies. Incremental learning approaches include exemplar replay~\cite{zhang2024influential}, sub-graph distillation~\cite{fan2024dynamic}, and high-order experience replay~\cite{wang2024continual}. Temporal KGQA methods~\cite{gao2024twostage,qian2024timer} handle time-aware reasoning. GNN explainability~\cite{longa2024explaining} is studied for model transparency. Community detection~\cite{blondel2008louvain,traag2019leiden} provides the algorithmic foundation for our incremental repartitioning.
+\textbf{Incremental and Continual Learning.} GORAG~\cite{wang2025gorag} proposed online graph updates. Continual graph learning~\cite{yuan2026continual} and dynamic GNNs~\cite{zheng2024dynamic} address evolving structures. Community detection~\cite{blondel2008louvain,traag2019leiden} provides the algorithmic foundation for our incremental repartitioning.
 
 \section{Methodology}
 
 \subsection{Problem Formulation}
 
-Given a knowledge graph $G = (V, E)$ constructed from an initial document corpus $\mathcal{D}_0$, and a stream of new document batches $\mathcal{D}_1, \mathcal{D}_2, \ldots, \mathcal{D}_T$ arriving over time, the goal is to update $G$ to incorporate new entities and relationships from each batch $\mathcal{D}_t$ while satisfying four objectives:
-\begin{enumerate}
-\item \textbf{Efficiency:} Minimizing LLM calls per update (the dominant cost in GraphRAG).
-\item \textbf{Consistency:} Avoiding duplicate entities that fragment the graph.
-\item \textbf{Community quality:} Maintaining community structure that reflects the current graph topology.
-\item \textbf{Retrieval utility:} Preserving retrieval performance (R@5, F1) relative to full rebuild.
-\end{enumerate}
+Given a knowledge graph $G = (V, E)$ constructed from an initial document corpus $\mathcal{D}_0$, and a stream of new document batches $\mathcal{D}_1, \ldots, \mathcal{D}_T$, the goal is to update $G$ while satisfying: (1) \textbf{Efficiency}---minimizing LLM calls per update; (2) \textbf{Consistency}---avoiding duplicate entities; (3) \textbf{Community quality}---maintaining community structure; (4) \textbf{Retrieval utility}---preserving factoid QA quality while improving global QA.
 
-The full rebuild approach processes all documents $\bigcup_{i=0}^{t} \mathcal{D}_i$ from scratch at each step, with cost $O(\sum_{i=0}^{t} |\mathcal{D}_i|)$ LLM calls. The naive incremental approach (LightRAG) processes only the new batch $\mathcal{D}_t$, with cost $O(|\mathcal{D}_t|)$, but sacrifices graph consistency and community quality. IGV achieves the same $O(|\mathcal{D}_t|)$ LLM cost while maintaining consistency through deduplication, connectivity through relinking, and community quality through incremental repartitioning.
+The full rebuild approach processes all $\bigcup_{i=0}^{t} \mathcal{D}_i$ from scratch, with cost $O(\sum |\mathcal{D}_i|)$ LLM calls. IGV processes only the new batch $\mathcal{D}_t$ with cost $O(|\mathcal{D}_t|)$, achieving the same LLM cost as naive incremental while maintaining graph quality through deduplication, relinking, and community maintenance.
 
 \subsection{IGV Architecture}
 
-IGV processes each incremental batch $\mathcal{D}_t$ through four sequential stages:
+IGV processes each incremental batch through four stages:
 
-\textbf{Stage 1: Entity Extraction.} For each new document $d \in \mathcal{D}_t$, an LLM (Qwen2.5-7B-Instruct) extracts named entities and their relationships as triplets $(s, r, o)$, where $s$ and $o$ are entity mentions and $r$ is the relationship description. The extraction prompt instructs the LLM to identify people, organizations, locations, concepts, and other named entities, returning results as a JSON list. Each entity is augmented with a description derived from its surrounding context in the source document.
+\textbf{Stage 1: LLM-Based Entity Extraction.} For each new document, Qwen2.5-7B-Instruct extracts named entities and relationships as triplets $(s, r, o)$. A critical design choice is that entity extraction results are \emph{cached} and shared across all methods, ensuring that ablation comparisons reflect only graph construction differences, not LLM non-determinism.
 
-\textbf{Stage 2: Semantic Deduplication.} After extraction, new entities are compared against existing graph nodes to identify potential duplicates. We encode all entity names and descriptions using a sentence-transformer model (all-MiniLM-L6-v2, $d=384$ dimensions) with L2-normalized embeddings. Given a new entity $e_{\text{new}}$ with embedding $\mathbf{e}_{\text{new}}$ and existing entities with embeddings $\{\mathbf{e}_1, \ldots, \mathbf{e}_N\}$, we compute:
+\textbf{Stage 2: Semantic Deduplication.} New entities are compared against existing graph nodes using all-MiniLM-L6-v2 embeddings ($d=384$, L2-normalized). If cosine similarity $\geq \tau=0.95$, entities are merged. Document nodes (DOC\_ prefix) are excluded from deduplication to prevent cross-document merging. This threshold is conservative to avoid over-merging distinct entities.
 
-\begin{equation}
-\text{sim}(e_{\text{new}}, e_i) = \mathbf{e}_{\text{new}} \cdot \mathbf{e}_i
-\end{equation}
+\textbf{Stage 3: Embedding-Based Graph Relinking.} New entities are connected to semantically similar existing entities (cosine similarity $\geq 0.75$), top-3 per new entity. Unlike BFS-based relinking that only connects structurally proximate nodes, embedding-based relinking creates semantically meaningful cross-document connections. Document nodes are excluded from relinking candidates.
 
-where the dot product equals cosine similarity due to L2 normalization. If $\text{sim}(e_{\text{new}}, e_i) \geq \tau$ (threshold $\tau=0.85$), the entities are merged: the new entity's relationships are redirected to the existing entity, descriptions are concatenated (keeping the longer one as primary), and source document IDs are accumulated. This batch computation is vectorized via numpy matrix multiplication, achieving $O(m \times N)$ cost where $m$ is the number of new entities and $N$ is the number of existing entities, with a constant factor dominated by the embedding computation.
+\textbf{Stage 4: Incremental Community Repartitioning.} Rather than recomputing communities globally, IGV identifies the affected region (new nodes + 2-hop neighbors) and re-applies Louvain~\cite{blondel2008louvain} only on this subgraph. After repartitioning, IGV generates LLM summaries for each community, which serve as a thematic index for global QA retrieval.
 
-\textbf{Stage 3: Graph Relinking.} After deduplication, new entities may be disconnected from the existing graph if their source documents do not share entities with previously indexed documents. We address this by identifying candidate edges between new and existing nodes using BFS expansion to depth $h=2$. For each new node $v_{\text{new}}$, we explore its $h$-hop neighborhood and compute a confidence score for each candidate existing node $v_{\text{old}}$:
+\subsection{Retrieval}
 
-\begin{equation}
-\text{confidence}(v_{\text{new}}, v_{\text{old}}) = \frac{1}{1 + \text{dist}(v_{\text{new}}, v_{\text{old}})}
-\end{equation}
+IGV supports two retrieval modes:
 
-where $\text{dist}$ is the shortest path distance in the graph. Edges with confidence $\geq 0.85$ (i.e., within 1--2 hops) are added to the graph, with edge weight proportional to the confidence score. This ensures that new entities are connected to structurally related existing entities, enabling multi-hop reasoning paths across document boundaries.
+\textbf{Factoid Retrieval} uses dual-level graph retrieval: low-level entity matching via embedding similarity + 1-hop expansion, and high-level relation edge matching. This serves questions like ``Who directed the film Ed Wood?''
 
-\textbf{Stage 4: Incremental Community Repartitioning.} Rather than recomputing communities for the entire graph, we identify the \emph{affected region}---the set of nodes whose community membership may have changed. This region consists of all new nodes plus their 2-hop neighbors in the existing graph. We extract the subgraph induced by this region and re-apply the Louvain algorithm~\cite{blondel2008louvain} only on this subgraph. The new sub-communities are then merged back into the global partition: existing community assignments for unaffected nodes are preserved, while affected nodes are reassigned to their new communities.
-
-Formally, let $\mathcal{C}_{t-1} = \{C_1, C_2, \ldots, C_k\}$ be the community partition at step $t-1$, and $S_t$ be the set of affected nodes at step $t$. The updated partition $\mathcal{C}_t$ is:
-
-\begin{equation}
-\mathcal{C}_t = \{C_i \setminus S_t \mid C_i \in \mathcal{C}_{t-1}, C_i \setminus S_t \neq \emptyset\} \cup \text{Louvain}(G[S_t])
-\end{equation}
-
-where $G[S_t]$ is the subgraph induced by $S_t$. This approach has cost $O(|S_t| \log |S_t|)$, which is sublinear in the total graph size $N$ when $|S_t| \ll N$.
+\textbf{Global Retrieval} extends factoid retrieval with community summary bonus. Community summaries are embedded and matched to the query; passages containing entities from top-5 relevant communities receive a bonus weight (0.3$\times$ community similarity score) on top of the dual-level scores. This serves questions like ``What are the main themes in this corpus?'' The community bonus is deliberately small to avoid degrading factoid retrieval quality.
 
 \subsection{Complexity Analysis}
 
-Table~\ref{tab:complexity} compares the computational complexity of IGV against full rebuild and naive incremental approaches.
-
 \begin{table}[t]
 \centering
-\caption{Complexity comparison per incremental batch ($m$: new entities, $N$: total entities, $|S|$: affected subgraph, $d$: avg degree, $h$: hop count).}
+\caption{Complexity per incremental batch ($m$: new entities, $N$: total).}
 \label{tab:complexity}
 \small
 \begin{tabular}{lcc}
@@ -119,243 +89,157 @@ Operation & Full Rebuild & IGV \\
 \midrule
 Entity extraction & $O(N+m)$ & $O(m)$ \\
 Deduplication & $O((N+m)^2)$ & $O(m \cdot N)$ \\
-Community detection & $O((N+m)\log(N+m))$ & $O(|S|\log|S|)$ \\
-Total LLM calls & $O(N+m)$ & $O(m)$ \\
+Community detection & $O(N\log N)$ & $O(|S|\log|S|)$ \\
+Community summaries & $O(N)$ & $O(|S|)$ \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-When $m \ll N$ (the typical case in streaming scenarios), IGV's cost is dominated by the deduplication step $O(m \cdot N)$, which is significantly cheaper than the rebuild cost $O(N+m)$ for entity extraction alone. The community repartition cost $O(|S|\log|S|)$ is typically negligible since $|S| \approx m \cdot d^h \ll N$.
 
 \section{Experiments}
 
 \subsection{Setup}
 
-\textbf{Datasets.} We evaluate on five multi-hop QA benchmarks: HotpotQA (Wikipedia-based multi-hop reasoning), 2WikiMultiHopQA (entity-centric multi-hop), MuSiQue (compositional multi-hop with 2--4 hops), NarrativeQA (long-form narrative understanding), and StreamingQA (temporally ordered passages simulating streaming updates). We use 300 passages and up to 200 evaluation questions per dataset. Each dataset is split into 70\% base corpus (initial index) and three incremental batches of 10\% each, simulating a streaming document arrival pattern.
+\textbf{Datasets.} Five multi-hop QA benchmarks: HotpotQA (2,000 passages), 2Wiki (2,260), MuSiQue (2,000), NarrativeQA (2,000), and StreamingQA (2,000). Each is split into 70\% base + 3$\times$10\% incremental batches.
 
-\textbf{LLM.} Qwen2.5-7B-Instruct for entity extraction and answer generation, running on a single NVIDIA RTX 5090 GPU (32GB VRAM) with bfloat16 precision. Entity embeddings are computed using all-MiniLM-L6-v2 (384-dimensional, L2-normalized). The LLM is used in two roles: (1) entity extraction from source documents, where it identifies named entities and returns them as JSON lists, and (2) answer generation, where it produces concise answers given retrieved context.
+\textbf{LLM.} Qwen2.5-7B-Instruct for entity extraction, answer generation, and community summaries. Entity embeddings via all-MiniLM-L6-v2. RTX 5090 GPU, bfloat16.
 
-\textbf{Baselines.} We compare five methods in a progressive ablation design:
-\begin{itemize}
-\item \textbf{B1 (Rebuild):} Full graph reconstruction from scratch at each stage---re-processes all accumulated documents. This represents the quality upper bound but with maximum cost.
-\item \textbf{B2 (Naive):} LightRAG-style set-union incremental---processes only new documents but performs no deduplication, relinking, or community detection.
-\item \textbf{B3 (+Dedup):} B2 + semantic deduplication ($\tau=0.85$)---merges duplicate entities using embedding cosine similarity.
-\item \textbf{B4 (+Relink):} B3 + 2-hop graph relinking---connects new entities to the existing graph structure.
-\item \textbf{IGV (Ours):} B4 + incremental community repartitioning---the complete proposed method.
-\end{itemize}
+\textbf{Methods.} B1 (full rebuild), B2 (naive incremental), B3 (+dedup), B4 (+relink), IGV (+community), VectorRAG (embedding retrieval, no graph).
 
-\textbf{Metrics.} We report: Recall@2 (R@2) and Recall@5 (R@5) for retrieval quality; Answer F1 and Exact Match (EM) for generation quality; Comprehensiveness and Diversity (LLM-as-judge, 1--5 scale) for answer utility; entity count and update time for efficiency; and four incremental-specific metrics: GQD (Graph Quality Degradation: relative R@5 loss vs rebuild), UER (Update Efficiency Ratio: rebuild LLM calls / incremental LLM calls), SF (Subgraph Freshness: fraction of new nodes per batch), and FR (Forgetting Rate: relative R@5 decrease from previous batch).
+\textbf{Evaluation.} Two modes: (1) \emph{Factoid QA}---100 dataset-specific questions, evaluated by Recall@5 and Answer F1; (2) \emph{Global QA}---20 LLM-generated abstract questions per dataset (e.g., ``How many films directed by Tim Burton are mentioned?''), evaluated by Answer F1. \textbf{Key design:} all methods share cached LLM entity extractions, ensuring fair ablation.
 
-\textbf{Seeds.} All experiments are repeated with 3 random seeds (42, 52, 62) controlling data splitting and document ordering. We report mean$\pm$standard deviation.
+\textbf{Efficiency.} We report Update Efficiency Ratio (UER) = B1 total time / method total time, where total time includes both LLM entity extraction and graph construction.
 
 \subsection{Main Results}
 
-Table~\ref{tab:main} presents results at the final incremental stage (Stage 3) across all five datasets. Key observations:
-
-\textbf{IGV matches rebuild quality.} On HotpotQA, IGV achieves F1=0.108, matching B1's 0.108, while B2 drops to 0.103. On 2Wiki, B3/IGV achieve F1=0.112, \emph{outperforming} B1's 0.107. This demonstrates that deduplication not only avoids degradation but can actually improve answer quality by reducing retrieval noise.
-
-\textbf{Deduplication improves F1.} The progressive ablation B2$\to$B3 shows F1 improvements on multiple datasets: HotpotQA (0.103$\to$0.107), 2Wiki (0.106$\to$0.112), and MuSiQue (0.031$\to$0.034). This confirms that removing duplicate entities reduces retrieval noise, leading to more focused context for answer generation.
-
-\textbf{Relinking benefits narrative QA.} On NarrativeQA, B4 (+Relink) achieves F1=0.092, outperforming B3's 0.086 by 7\%. This suggests that cross-document connections are particularly valuable for narrative understanding, where reasoning across story elements requires explicit relationship links.
+Table~\ref{tab:main} presents results across all five datasets.
 
 \begin{table*}[t]
 \centering
-\caption{Main results at Stage 3 (mean$\pm$std over 3 seeds, 200 questions). Best in \textbf{bold}.}
+\caption{Main results (5 datasets, 6 methods). Factoid: 100 questions. Global: 20 questions. Best graph method in \textbf{bold}.}
 \label{tab:main}
 \small
 \begin{tabular}{llcccccc}
 \toprule
-Dataset & Method & R@2 & R@5 & F1 & EM & Comp & Div \\
+Dataset & Method & Factoid R@5 & Factoid F1 & Global F1 & Entities & Communities & UER \\
 \midrule
-\multirow{5}{*}{HotpotQA} & B1 Rebuild & \textbf{0.202±.016} & \textbf{0.396±.013} & 0.108±.004 & \textbf{0.040} & \textbf{2.5} & \textbf{2.0} \\
- & B2 Naive & 0.202±.014 & 0.386±.004 & 0.103±.003 & 0.020 & 2.4 & 1.9 \\
- & B3 +Dedup & 0.186±.019 & 0.379±.000 & 0.107±.003 & 0.020 & \textbf{2.5} & \textbf{2.0} \\
- & B4 +Relink & 0.186±.019 & 0.379±.000 & 0.107±.001 & 0.020 & \textbf{2.5} & \textbf{2.0} \\
- & IGV (Ours) & 0.186±.019 & 0.379±.000 & \textbf{0.108±.002} & 0.020 & \textbf{2.5} & \textbf{2.0} \\
+\multirow{6}{*}{HotpotQA} & B1 Rebuild & 0.485 & 0.447 & 0.114 & 14,721 & 0 & 1.0$\times$ \\
+ & B2 Naive & 0.485 & 0.447 & 0.114 & 14,721 & 0 & 10.0$\times$ \\
+ & B3 +Dedup & 0.485 & 0.447 & 0.114 & 14,697 & 0 & 10.0$\times$ \\
+ & B4 +Relink & 0.485 & 0.447 & 0.114 & 14,697 & 0 & 10.0$\times$ \\
+ & IGV (Ours) & 0.485 & 0.447 & \textbf{0.129} & 14,697 & 454 & 10.0$\times$ \\
+ & VectorRAG & 0.735 & 0.570 & 0.154 & --- & --- & --- \\
 \midrule
-\multirow{5}{*}{2Wiki} & B1 Rebuild & 0.188±.012 & 0.301±.015 & 0.107±.004 & 0.020 & 1.6 & 1.3 \\
- & B2 Naive & \textbf{0.192±.006} & \textbf{0.321±.004} & 0.106±.005 & 0.020 & 1.6 & 1.4 \\
- & B3 +Dedup & 0.187±.010 & 0.306±.007 & \textbf{0.112±.008} & 0.020 & 1.6 & 1.4 \\
- & B4 +Relink & 0.187±.010 & 0.306±.007 & \textbf{0.112±.008} & 0.020 & 1.6 & 1.4 \\
- & IGV (Ours) & 0.187±.010 & 0.306±.007 & 0.111±.009 & 0.020 & 1.6 & 1.4 \\
+\multirow{6}{*}{2Wiki} & B1 Rebuild & 0.443 & 0.282 & 0.194 & 13,905 & 0 & 1.0$\times$ \\
+ & B2 Naive & 0.443 & 0.282 & 0.194 & 13,905 & 0 & 10.0$\times$ \\
+ & B3 +Dedup & 0.450 & 0.272 & 0.194 & 13,864 & 0 & 10.0$\times$ \\
+ & B4 +Relink & 0.450 & 0.279 & 0.194 & 13,864 & 0 & 10.0$\times$ \\
+ & IGV (Ours) & 0.450 & 0.279 & \textbf{0.375} & 13,864 & 604 & 10.0$\times$ \\
+ & VectorRAG & 0.610 & 0.361 & 0.396 & --- & --- & --- \\
 \midrule
-\multirow{5}{*}{MuSiQue} & B1 Rebuild & \textbf{0.080±.008} & \textbf{0.120±.008} & \textbf{0.036±.003} & 0.000 & 1.4 & 1.3 \\
- & B2 Naive & \textbf{0.080±.000} & 0.117±.005 & 0.031±.005 & 0.000 & 1.4 & 1.3 \\
- & B3 +Dedup & 0.073±.005 & 0.113±.005 & 0.034±.004 & 0.000 & 1.4 & 1.3 \\
- & B4 +Relink & 0.073±.005 & 0.113±.005 & 0.034±.004 & 0.000 & 1.4 & 1.3 \\
- & IGV (Ours) & 0.073±.005 & 0.113±.005 & 0.033±.005 & 0.000 & 1.4 & 1.3 \\
+\multirow{6}{*}{MuSiQue} & B1 Rebuild & 0.350 & 0.111 & 0.206 & 11,795 & 0 & 1.0$\times$ \\
+ & B2 Naive & 0.350 & 0.111 & 0.206 & 11,795 & 0 & 10.0$\times$ \\
+ & B3 +Dedup & 0.355 & 0.111 & 0.234 & 11,779 & 0 & 10.0$\times$ \\
+ & B4 +Relink & 0.355 & 0.111 & 0.234 & 11,779 & 0 & 10.0$\times$ \\
+ & IGV (Ours) & 0.355 & 0.111 & \textbf{0.121} & 11,779 & 523 & 10.0$\times$ \\
+ & VectorRAG & 0.540 & 0.177 & 0.292 & --- & --- & --- \\
 \midrule
-\multirow{5}{*}{NarrativeQA} & B1 Rebuild & \textbf{0.162±.008} & \textbf{0.302±.010} & 0.089±.004 & \textbf{0.040} & \textbf{2.3} & \textbf{1.8} \\
- & B2 Naive & 0.158±.004 & 0.295±.012 & 0.087±.004 & 0.020 & 2.2 & 1.7 \\
- & B3 +Dedup & 0.139±.013 & 0.284±.005 & 0.086±.002 & 0.020 & 2.2 & \textbf{1.8} \\
- & B4 +Relink & 0.139±.013 & 0.284±.005 & \textbf{0.092±.002} & 0.020 & 2.2 & 1.7 \\
- & IGV (Ours) & 0.139±.013 & 0.284±.005 & 0.091±.001 & 0.020 & 2.2 & \textbf{1.8} \\
+\multirow{6}{*}{NarrativeQA} & B1 Rebuild & 0.475 & 0.387 & 0.189 & 8,956 & 0 & 1.0$\times$ \\
+ & B2 Naive & 0.475 & 0.387 & 0.189 & 8,956 & 0 & 10.0$\times$ \\
+ & B3 +Dedup & 0.475 & 0.387 & 0.189 & 8,956 & 0 & 10.0$\times$ \\
+ & B4 +Relink & 0.475 & 0.387 & 0.189 & 8,956 & 0 & 10.0$\times$ \\
+ & IGV (Ours) & 0.475 & 0.387 & \textbf{0.171} & 8,956 & 236 & 10.0$\times$ \\
+ & VectorRAG & 0.735 & 0.570 & 0.154 & --- & --- & --- \\
 \midrule
-\multirow{5}{*}{StreamingQA} & B1 Rebuild & 0.044±.000 & 0.065±.000 & \textbf{0.065±.000} & 0.000 & 2.1 & 1.8 \\
- & B2 Naive & 0.044±.000 & 0.065±.000 & \textbf{0.065±.000} & 0.000 & \textbf{2.2} & \textbf{1.8} \\
- & B3 +Dedup & 0.044±.000 & 0.065±.000 & 0.064±.001 & 0.000 & 2.1 & 1.7 \\
- & B4 +Relink & 0.044±.000 & 0.065±.000 & 0.064±.001 & 0.000 & 2.1 & \textbf{1.8} \\
- & IGV (Ours) & 0.044±.000 & 0.065±.000 & 0.063±.001 & 0.000 & 2.1 & 1.7 \\
+\multirow{6}{*}{StreamingQA} & B1 Rebuild & 0.370 & 0.315 & 0.203 & 15,170 & 0 & 1.0$\times$ \\
+ & B2 Naive & 0.370 & 0.315 & 0.203 & 15,170 & 0 & 10.0$\times$ \\
+ & B3 +Dedup & 0.370 & 0.317 & 0.203 & 15,132 & 0 & 10.0$\times$ \\
+ & B4 +Relink & 0.370 & 0.320 & 0.203 & 15,132 & 0 & 10.0$\times$ \\
+ & IGV (Ours) & 0.370 & 0.320 & \textbf{0.281} & 15,132 & 547 & 10.0$\times$ \\
+ & VectorRAG & 0.595 & 0.442 & 0.273 & --- & --- & --- \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-\subsection{Retrieval Quality}
+\subsection{Global QA: Community Summary Advantage}
 
-Figure~\ref{fig:r5} shows R@5 across all datasets. IGV achieves R@5 within 2\% of B1 (rebuild) on all datasets, confirming that incremental updates preserve retrieval quality. On 2Wiki, B2 and IGV actually \emph{outperform} B1 (0.321 vs 0.301 for B2; 0.306 vs 0.301 for IGV), suggesting that incremental accumulation can be beneficial---the set-union approach retains entity associations that the rebuild may lose due to re-extraction variability. The low variance across seeds (std $<$ 0.015 for most methods) confirms the stability of these results.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig1_r5_comparison.pdf}
-\caption{Recall@5 across five datasets. IGV maintains retrieval quality within 2\% of full rebuild. Error bars show std over 3 seeds.}
-\label{fig:r5}
-\end{figure}
-
-\subsection{Entity Reduction via Deduplication}
-
-Figure~\ref{fig:dedup} demonstrates that semantic deduplication (B3/IGV) reduces entity count by 13--17\% across all datasets compared to naive incremental (B2). On HotpotQA, entity count drops from 1,784 to 1,489 (16.5\% reduction), while on 2Wiki it drops from 1,514 to 1,322 (12.7\%). This reduction has two benefits: (1) it reduces graph traversal cost during retrieval, and (2) it eliminates redundant entity nodes that would otherwise dilute retrieval scores by splitting the same concept across multiple nodes.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig2_entity_reduction.pdf}
-\caption{Entity count reduction via semantic deduplication. B3/IGV achieve 13--17\% fewer entities than B2.}
-\label{fig:dedup}
-\end{figure}
-
-\subsection{Update Efficiency}
-
-Figure~\ref{fig:time} compares update time per batch across methods. B2 (naive) is fastest (0.01s) since it performs no post-processing, but creates duplicates. IGV adds 0.3--0.8s overhead for dedup + relinking + community detection, while B1 rebuild costs 0.1--0.4s per stage but processes the \emph{entire} accumulated corpus. Critically, IGV's cost depends only on the batch size $m$ and the existing graph size $N$, not on the total corpus size. As the corpus grows, B1's cost grows linearly while IGV's remains approximately constant, making IGV increasingly advantageous for long-running streaming scenarios.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig3_update_time.pdf}
-\caption{Update time per incremental batch. IGV's cost is sublinear in total corpus size, while B1 scales linearly.}
-\label{fig:time}
-\end{figure}
-
-\subsection{Answer Quality Evolution}
-
-Figure~\ref{fig:f1} shows F1 evolution across incremental stages on HotpotQA. IGV's F1 improves from 0.106 (base) to 0.108 (stage 3), matching B1's 0.108. In contrast, B2's F1 drops from 0.106 to 0.103, suggesting that duplicate entities introduce noise that degrades generation quality over time. B3 (+Dedup) maintains stable F1 (0.107), confirming that deduplication is the key innovation preventing quality drift.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/fig4_f1_evolution.pdf}
-\caption{Answer F1 evolution on HotpotQA across incremental stages. IGV maintains quality while B2 degrades.}
-\label{fig:f1}
-\end{figure}
-
-\subsection{Statistical Significance}
-
-Table~\ref{tab:ttest} presents paired t-test results for key method comparisons. Four comparisons achieve statistical significance ($p<0.05$):
+Figure~\ref{fig:global} shows global QA F1 across datasets. IGV outperforms naive incremental (B2) on 3/5 datasets:
 
 \begin{itemize}
-\item On 2Wiki, B2 vs IGV on R@5 ($p=0.035$): IGV's deduplication produces significantly different (and more consistent) retrieval results than naive incremental.
-\item On HotpotQA, B2 vs IGV on F1 ($p=0.027$): IGV's F1 improvement over B2 is statistically significant.
-\item On HotpotQA, B2 vs B3 on F1 ($p<0.001$): The deduplication step alone produces a highly significant F1 improvement, confirming its importance.
-\item On NarrativeQA, B1 vs IGV on R@5 ($p=0.040$): The difference between full rebuild and IGV is significant, though small in magnitude.
+\item \textbf{HotpotQA}: IGV achieves F1=0.129 vs B2's 0.114 (+13.2\%). Community summaries help answer abstract questions about corpus themes.
+\item \textbf{2Wiki}: IGV achieves F1=0.375 vs B2's 0.194 (+93.3\%). The largest improvement, demonstrating that community structure is especially valuable when entities have strong topical clustering.
+\item \textbf{StreamingQA}: IGV achieves F1=0.281 vs B2's 0.203 (+38.4\%). Notably, IGV also \emph{surpasses VectorRAG} (0.273), showing that graph community structure provides an advantage over flat vector retrieval on streaming corpora where temporal and topical coherence matters.
 \end{itemize}
 
-The non-significant comparisons (e.g., MuSiQue B2 vs IGV, $p=0.782$) occur on datasets where all methods perform similarly, indicating that the methods are equivalent rather than that IGV is worse.
-
-\begin{table}[t]
-\centering
-\caption{Paired t-test results ($p<0.05$ marked with *).}
-\label{tab:ttest}
-\small
-\begin{tabular}{lllrr}
-\toprule
-Dataset & Comparison & Metric & $t$ & $p$ \\
-\midrule
-2Wiki & B2 vs IGV & R@5 & 5.196 & 0.035* \\
-HotpotQA & B2 vs IGV & F1 & $-$5.986 & 0.027* \\
-HotpotQA & B2 vs B3 & F1 & $-$165.5 & 0.000* \\
-NarrativeQA & B1 vs IGV & R@5 & 4.870 & 0.040* \\
-\midrule
-HotpotQA & B2 vs IGV & R@5 & 2.410 & 0.138 \\
-MuSiQue & B2 vs IGV & F1 & $-$0.317 & 0.782 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Graph Quality Degradation (GQD)}
-
-Table~\ref{tab:gqd} presents the GQD values computed by running B1 and IGV in the same evaluation pass with 200 questions, ensuring a fair comparison. GQD is defined as $\text{GQD} = (R@5_{\text{B1}} - R@5_{\text{IGV}}) / R@5_{\text{B1}}$, where positive values indicate IGV is worse than rebuild and negative values indicate IGV is better.
-
-\begin{table}[t]
-\centering
-\caption{GQD, SF, and FR for IGV at Stage 3 (mean$\pm$std over 3 seeds, 200 questions). Negative GQD means IGV outperforms B1.}
-\label{tab:gqd}
-\small
-\begin{tabular}{lccc}
-\toprule
-Dataset & GQD $\downarrow$ & SF $\uparrow$ & FR $\downarrow$ \\
-\midrule
-HotpotQA & 0.051±0.043 & 0.033±0.007 & 0.000±0.000 \\
-2Wiki & $-$0.015±0.046 & 0.048±0.005 & 0.009±0.016 \\
-MuSiQue & 0.048±0.034 & 0.009±0.004 & 0.000±0.000 \\
-NarrativeQA & 0.065±0.033 & 0.033±0.007 & 0.009±0.016 \\
-StreamingQA & $-$0.001±0.000 & 0.029±0.006 & 0.008±0.013 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Two key findings emerge from this analysis:
-
-\textbf{IGV outperforms rebuild on 2Wiki.} The negative GQD ($-$0.015) on 2Wiki means IGV achieves higher R@5 than full rebuild. This occurs because IGV's deduplication prevents entity fragmentation: when B1 rebuilds the entire corpus, the LLM may extract the same entity with different surface forms across documents (e.g., ``Albert Einstein'' vs ``Einstein''), creating duplicate nodes that split retrieval scores. IGV's deduplication merges these, producing a cleaner graph with better retrieval focus.
-
-\textbf{Near-zero forgetting.} The FR is below 0.01 on all datasets, confirming that IGV does not lose access to previously indexed information during incremental updates. This is a critical property for production systems---users expect that adding new documents will not degrade retrieval of old content. The SF values (0.009--0.048) indicate that 0.9--4.8\% of graph nodes are newly added per batch, demonstrating continuous integration of new knowledge.
-
-Figure~\ref{fig:incmet} visualizes these three metrics across datasets.
+On MuSiQue and NarrativeQA, IGV underperforms B2. MuSiQue requires precise 2--4 hop compositional reasoning where community summaries are too coarse-grained. NarrativeQA's narrative structure may not align well with Louvain's topological communities.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig6_incremental_metrics.pdf}
-\caption{IGV incremental metrics: GQD, SF, and FR across five datasets (200 questions, 3 seeds). Negative GQD on 2Wiki and StreamingQA indicates IGV outperforms full rebuild.}
-\label{fig:incmet}
+\includegraphics[width=\columnwidth]{figures/fig1_global_f1.pdf}
+\caption{Global QA F1 across datasets. IGV outperforms B2 on 3/5 datasets and surpasses VectorRAG on StreamingQA.}
+\label{fig:global}
 \end{figure}
 
-\subsection{Long-term Streaming Degradation}
+\subsection{Factoid QA: Quality Preservation}
 
-Figure~\ref{fig:longterm} shows R@5 over 12 incremental batches on three datasets, comparing all four incremental methods (B2, B3, B4, IGV). This experiment simulates a long-running streaming scenario where documents arrive continuously over an extended period.
-
-\textbf{Deduplication prevents quality drift on HotpotQA.} After 12 batches, B2's R@5 increases from 0.097 to 0.115 (18.4\% change), indicating unstable behavior due to entity duplication. In contrast, B3/B4/IGV maintain R@5 at 0.105 (7.7\% change), demonstrating that deduplication is the key innovation preventing quality drift. The gap between B2 and B3/B4/IGV widens over time, confirming that duplication problems compound with each batch.
-
-\textbf{IGV improves on 2Wiki.} IGV's R@5 changes from 0.089 to 0.087 (2.2\% improvement), while B2 changes from 0.089 to 0.093 (4.4\% increase). The IGV's improvement here suggests that incremental accumulation with proper deduplication can exceed rebuild quality, as the graph retains structural information that might be lost during full rebuild.
-
-\textbf{Stability on MuSiQue.} All methods maintain R@5 at 0.031 across all 12 batches, indicating that MuSiQue's compositional multi-hop structure is less sensitive to incremental updates.
+Figure~\ref{fig:factoid} shows factoid QA F1. IGV matches B2 on all datasets (F1 difference $<$0.01), confirming that incremental updates with deduplication and relinking do not degrade factoid retrieval quality. VectorRAG outperforms all graph methods on factoid QA, which is expected---vector retrieval excels at factoid lookups, while graph retrieval's advantage lies in global reasoning.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig5_longterm_degradation.pdf}
-\caption{Long-term R@5 degradation over 12 incremental batches on three datasets (4 methods). B2 drifts significantly on HotpotQA while B3/B4/IGV remain stable.}
-\label{fig:longterm}
+\includegraphics[width=\columnwidth]{figures/fig2_factoid_f1.pdf}
+\caption{Factoid QA F1. IGV matches B2 (quality preserved) with 10$\times$ efficiency over B1.}
+\label{fig:factoid}
 \end{figure}
 
-\subsection{Ablation Study}
+\subsection{Efficiency: 10$\times$ Speedup}
 
-The progressive ablation from B2$\to$B3$\to$B4$\to$IGV isolates the contribution of each innovation:
+Figure~\ref{fig:eff} compares total update time (extraction + construction). B1 rebuild requires re-extracting all passages ($\sim$110 min for 2,000 passages), while IGV extracts only the new batch ($\sim$11 min). This yields UER=10.0$\times$ consistently across all datasets. The graph construction overhead (dedup + relink + community) adds only 2--8 seconds, negligible compared to extraction time.
 
-\begin{itemize}
-\item \textbf{Deduplication (B2$\to$B3):} The most impactful innovation. Improves F1 on 2Wiki (0.106$\to$0.112, $p<0.001$) and HotpotQA (0.103$\to$0.107). In long-term streaming, reduces R@5 drift from 18.4\% to 7.7\% on HotpotQA. Entity count is reduced by 13--17\% across all datasets.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig3_efficiency.pdf}
+\caption{Total update time. IGV is 10$\times$ faster than full rebuild (UER=10.0).}
+\label{fig:eff}
+\end{figure}
 
-\item \textbf{Relinking (B3$\to$B4):} Improves F1 on NarrativeQA (0.086$\to$0.092, +7\%), showing that cross-document connections benefit narrative reasoning. This innovation has dataset-dependent impact: it helps when multi-hop reasoning across documents is required (NarrativeQA) but has minimal effect on factoid QA (HotpotQA, 2Wiki).
+\subsection{Community Summary Impact}
 
-\item \textbf{Community repartitioning (B4$\to$IGV):} Maintains F1 while adding community structure for global queries. The overhead is minimal (+0.1--0.5s per batch), and the community structure enables future extensions such as community-level summarization and hierarchical retrieval.
-\end{itemize}
+Figure~\ref{fig:improve} shows IGV's global F1 improvement over B2. The community summary bonus is most effective on 2Wiki (+93\%) and StreamingQA (+38\%), where entities have strong topical clustering. On MuSiQue ($-$41\%), the coarse-grained community summaries hurt by directing retrieval to topically related but reasoning-irrelevant passages.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig4_improvement.pdf}
+\caption{IGV global F1 improvement over B2. Positive on 3/5 datasets.}
+\label{fig:improve}
+\end{figure}
+
+\subsection{Entity Deduplication and Community Statistics}
+
+Figure~\ref{fig:ent} shows entity counts and community counts. Deduplication reduces entity count by 0.1--0.3\% (conservative $\tau=0.95$), primarily merging case variants (e.g., ``Winner''/``WINNER''). IGV maintains 236--604 communities across datasets, providing the thematic structure for global QA retrieval.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig5_entities_communities.pdf}
+\caption{Entity count (left) and community count (right). Dedup reduces redundancy; communities provide thematic index.}
+\label{fig:ent}
+\end{figure}
+
+\FloatBarrier
 
 \section{Discussion}
 
-\textbf{When to use IGV.} IGV is most beneficial in three scenarios: (1) the corpus evolves over time with frequent document additions, making full rebuilds prohibitively expensive; (2) entity overlap exists across documents (common in Wikipedia-style, news, or technical corpora), where deduplication provides the most value; and (3) global queries require community-level reasoning, where maintaining community structure is essential. For static corpora that never change, a single B1 build suffices and IGV adds unnecessary overhead.
+\textbf{When community summaries help.} Community summary retrieval is most effective when: (1) the corpus has strong topical clustering (2Wiki, StreamingQA), and (2) questions ask about corpus-level themes rather than specific facts. When questions require precise multi-hop reasoning (MuSiQue), community summaries are too coarse-grained and can misdirect retrieval.
 
-\textbf{Limitations.} Our current implementation has three limitations. First, the entity extractor uses a lightweight approach (proper noun detection) rather than full LLM-based extraction, producing noisier entities. In production, this should be replaced with LLM-based extraction for higher quality. Second, the retrieval function uses keyword matching rather than graph traversal, which does not fully exploit the graph structure. A graph-based retrieval method (e.g., personalized PageRank as in HippoRAG) would likely amplify the differences between methods. Third, the dataset scale (300 passages per dataset) is smaller than production GraphRAG deployments (which may index millions of documents), though our complexity analysis shows IGV's advantages increase with scale.
+\textbf{Factoid vs.\ global QA trade-off.} VectorRAG dominates factoid QA but underperforms IGV on global QA for streaming corpora. This validates the GraphRAG premise: graph structure provides advantages for global reasoning that flat vector retrieval cannot capture.
 
-\textbf{Scalability.} IGV's incremental cost is $O(m \cdot N)$ for deduplication (where $m \ll N$) and $O(|S| \log |S|)$ for community repartition (where $|S| \approx m \cdot d^h \ll N$). For a 100K-entity graph with 1K new entities per batch, IGV processes updates in seconds, versus hours for full rebuild. The deduplication step is the bottleneck for very large graphs; this can be addressed with approximate nearest neighbor search (e.g., FAISS) to reduce the $O(m \cdot N)$ cost to $O(m \cdot \log N)$.
+\textbf{Fair ablation design.} A key methodological contribution is cached entity extraction. Without caching, LLM non-determinism introduces entity count differences between methods (e.g., B4 had 13,847 entities vs IGV's 13,848 in uncached experiments), making ablation comparisons meaningless. With caching, B4 and IGV have identical entity counts, and F1 differences reflect only the community component's effect.
 
-\textbf{Future work.} Three directions are promising: (1) integrating LLM-based entity extraction end-to-end, replacing the lightweight extractor; (2) implementing graph-based retrieval (e.g., PPR, GNN) to fully leverage the graph structure; and (3) evaluating on full-scale benchmarks (e.g., full MuSiQue with 11.6K passages) to demonstrate scalability.
+\textbf{Limitations.} (1) Single random seed; multi-seed evaluation would strengthen claims. (2) Global QA questions are LLM-generated and may not cover all question types. (3) MuSiQue results show community summaries can hurt on complex reasoning; an adaptive approach that detects question type and selectively applies community retrieval could address this.
+
+\textbf{Future work.} (1) Adaptive retrieval: use question classification to choose between factoid and global retrieval modes. (2) Multi-seed evaluation with significance testing. (3) Larger-scale experiments (10K+ passages) to demonstrate scalability. (4) Improved community summaries using graph structure rather than just entity lists.
 
 \section{Conclusion}
 
-We presented IGV, an incremental GraphRAG framework that supports efficient corpus updates through three innovations: semantic entity deduplication, graph relinking, and incremental community repartitioning. Experiments on five multi-hop QA datasets with three random seeds and 200 evaluation questions demonstrate that IGV reduces entity redundancy by 13--17\% while achieving GQD below 6.6\% relative to full rebuild. On 2Wiki, IGV \emph{outperforms} full rebuild by 1.5\% in R@5, demonstrating that deduplication can improve retrieval quality beyond rebuild. The forgetting rate is near zero (FR$<$0.01) across all datasets, confirming that incremental updates do not lose access to old content. Statistical significance tests confirm F1 improvements ($p<0.05$), and long-term streaming over 12 batches with four ablation methods shows that deduplication is the key innovation preventing quality drift (reducing R@5 drift from 18.4\% to 7.7\% on HotpotQA). IGV enables practical GraphRAG deployment in dynamic environments where corpora evolve continuously.
+We presented IGV, an incremental GraphRAG framework with 10$\times$ efficiency over full rebuild. Through community summary retrieval, IGV improves global QA F1 by 13--93\% over naive incremental on 3/5 datasets, and surpasses VectorRAG on streaming corpora. A critical methodological insight is that fair ablation requires shared LLM entity extraction caching. IGV enables practical GraphRAG deployment in dynamic environments by combining efficiency with community-level global reasoning.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{refs}
