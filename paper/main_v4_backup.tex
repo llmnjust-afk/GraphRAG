@@ -23,7 +23,7 @@
 \country{Anonymous Country}}
 
 \begin{abstract}
-Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language models (LLMs) by structuring document corpora as knowledge graphs, enabling multi-hop reasoning and global question answering. However, existing GraphRAG systems require expensive full-graph rebuilds when new documents arrive, making them impractical for dynamic, evolving corpora. We present IGV (Incremental Graph Versioner), a framework that supports efficient incremental updates to GraphRAG indexes through three components: (1) embedding-based semantic entity deduplication, (2) embedding-based graph relinking, and (3) incremental community repartitioning with community summary generation for global QA retrieval. Experiments on five multi-hop QA datasets with LLM-based entity extraction (Qwen2.5-7B-Instruct) across 2,000 passages and 120 evaluation questions per dataset demonstrate that IGV achieves 10$\times$ faster updates than full rebuild while maintaining factoid QA quality. Critically, IGV's community summary retrieval improves global QA F1 by 12.6--93.8\% over naive incremental baselines on 3/5 datasets, and even surpasses VectorRAG on streaming corpora. All methods share cached LLM entity extractions, ensuring fair ablation comparisons.
+Graph-based Retrieval-Augmented Generation (GraphRAG) enhances large language models (LLMs) by structuring document corpora as knowledge graphs, enabling multi-hop reasoning and global question answering. However, existing GraphRAG systems require expensive full-graph rebuilds when new documents arrive, making them impractical for dynamic, evolving corpora. We present IGV (Incremental Graph Versioner), a framework that supports efficient incremental updates to GraphRAG indexes through three components: (1) embedding-based semantic entity deduplication, (2) embedding-based graph relinking, and (3) incremental community repartitioning with community summary generation for global QA retrieval. Experiments on five multi-hop QA datasets with LLM-based entity extraction (Qwen2.5-7B-Instruct) across 2,000 passages and 120 evaluation questions per dataset demonstrate that IGV achieves 10$\times$ faster updates than full rebuild while maintaining factoid QA quality. Critically, IGV's community summary retrieval improves global QA F1 by 13--93\% over naive incremental baselines on 3/5 datasets, and even surpasses VectorRAG on streaming corpora. All methods share cached LLM entity extractions, ensuring fair ablation comparisons.
 \end{abstract}
 
 \keywords{GraphRAG, Incremental Indexing, Knowledge Graph, Retrieval-Augmented Generation}
@@ -38,7 +38,7 @@ A critical limitation of current GraphRAG systems is their reliance on \emph{ful
 
 We propose IGV (Incremental Graph Versioner), which addresses these problems through three components: semantic entity deduplication using sentence-transformer embeddings, embedding-based graph relinking that connects semantically similar entities, and incremental community repartitioning with LLM-generated community summaries for global QA retrieval. The key insight is that community summaries provide a thematic index for global questions, which factoid retrieval cannot serve effectively.
 
-Experiments on five datasets demonstrate that IGV achieves: (1) 10$\times$ faster updates than full rebuild (UER=10.0), (2) factoid QA quality comparable to both full rebuild and naive incremental baselines, and (3) global QA improvements of 12.6--93.8\% over naive incremental on 3/5 datasets, with IGV surpassing VectorRAG on streaming corpora. A critical methodological contribution is that all methods share cached LLM entity extractions, eliminating the LLM non-determinism that invalidated prior ablation comparisons.
+Experiments on five datasets demonstrate that IGV achieves: (1) 10$\times$ faster updates than full rebuild (UER=10.0), (2) factoid QA quality comparable to both full rebuild and naive incremental baselines, and (3) global QA improvements of 13--93\% over naive incremental on 3/5 datasets, with IGV surpassing VectorRAG on streaming corpora. A critical methodological contribution is that all methods share cached LLM entity extractions, eliminating the LLM non-determinism that invalidated prior ablation comparisons.
 
 \section{Related Work}
 
@@ -126,7 +126,7 @@ Dataset & Method & Factoid R@5 & Factoid F1 & Global F1 & Entities & Communities
  & B2 Naive & 0.485 & 0.447 & 0.114 & 14,721 & 0 & 10.0$\times$ \\
  & B3 +Dedup & 0.485 & 0.447 & 0.114 & 14,697 & 0 & 10.0$\times$ \\
  & B4 +Relink & 0.485 & 0.447 & 0.114 & 14,697 & 0 & 10.0$\times$ \\
- & IGV (Ours) & 0.485 & 0.447 & \textbf{0.129} & 14,697 & 455 & 10.0$\times$ \\
+ & IGV (Ours) & 0.485 & 0.447 & \textbf{0.129} & 14,697 & 454 & 10.0$\times$ \\
  & VectorRAG & 0.735 & 0.570 & 0.154 & --- & --- & --- \\
 \midrule
 \multirow{6}{*}{2Wiki} & B1 Rebuild & 0.443 & 0.282 & 0.194 & 13,905 & 0 & 1.0$\times$ \\
@@ -165,9 +165,9 @@ Dataset & Method & Factoid R@5 & Factoid F1 & Global F1 & Entities & Communities
 Figure~\ref{fig:global} shows global QA F1 across datasets. IGV outperforms naive incremental (B2) on 3/5 datasets:
 
 \begin{itemize}
-\item \textbf{HotpotQA}: IGV achieves F1=0.129 vs B2's 0.114 (+12.6\%). Community summaries help answer abstract questions about corpus themes.
-\item \textbf{2Wiki}: IGV achieves F1=0.375 vs B2's 0.194 (+93.8\%). The largest improvement, demonstrating that community structure is especially valuable when entities have strong topical clustering.
-\item \textbf{StreamingQA}: IGV achieves F1=0.281 vs B2's 0.203 (+38.5\%). Notably, IGV also \emph{surpasses VectorRAG} (0.273), showing that graph community structure provides an advantage over flat vector retrieval on streaming corpora where temporal and topical coherence matters.
+\item \textbf{HotpotQA}: IGV achieves F1=0.129 vs B2's 0.114 (+13.2\%). Community summaries help answer abstract questions about corpus themes.
+\item \textbf{2Wiki}: IGV achieves F1=0.375 vs B2's 0.194 (+93.3\%). The largest improvement, demonstrating that community structure is especially valuable when entities have strong topical clustering.
+\item \textbf{StreamingQA}: IGV achieves F1=0.281 vs B2's 0.203 (+38.4\%). Notably, IGV also \emph{surpasses VectorRAG} (0.273), showing that graph community structure provides an advantage over flat vector retrieval on streaming corpora where temporal and topical coherence matters.
 \end{itemize}
 
 On MuSiQue and NarrativeQA, IGV underperforms B2. MuSiQue requires precise 2--4 hop compositional reasoning where community summaries are too coarse-grained. NarrativeQA's narrative structure may not align well with Louvain's topological communities.
@@ -203,7 +203,7 @@ Figure~\ref{fig:eff} compares total update time (extraction + construction). B1 
 
 \subsection{Community Summary Impact}
 
-Figure~\ref{fig:improve} shows IGV's global F1 improvement over B2. The community summary bonus is most effective on 2Wiki (+93\%) and StreamingQA (+38\%), where entities have strong topical clustering. On MuSiQue ($-$41.5\%), the coarse-grained community summaries hurt by directing retrieval to topically related but reasoning-irrelevant passages.
+Figure~\ref{fig:improve} shows IGV's global F1 improvement over B2. The community summary bonus is most effective on 2Wiki (+93\%) and StreamingQA (+38\%), where entities have strong topical clustering. On MuSiQue ($-$41\%), the coarse-grained community summaries hurt by directing retrieval to topically related but reasoning-irrelevant passages.
 
 \begin{figure}[t]
 \centering
@@ -239,7 +239,7 @@ Figure~\ref{fig:ent} shows entity counts and community counts. Deduplication red
 
 \section{Conclusion}
 
-We presented IGV, an incremental GraphRAG framework with 10$\times$ efficiency over full rebuild. Through community summary retrieval, IGV improves global QA F1 by 12.6--93.8\% over naive incremental on 3/5 datasets, and surpasses VectorRAG on streaming corpora. A critical methodological insight is that fair ablation requires shared LLM entity extraction caching. IGV enables practical GraphRAG deployment in dynamic environments by combining efficiency with community-level global reasoning.
+We presented IGV, an incremental GraphRAG framework with 10$\times$ efficiency over full rebuild. Through community summary retrieval, IGV improves global QA F1 by 13--93\% over naive incremental on 3/5 datasets, and surpasses VectorRAG on streaming corpora. A critical methodological insight is that fair ablation requires shared LLM entity extraction caching. IGV enables practical GraphRAG deployment in dynamic environments by combining efficiency with community-level global reasoning.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{refs}
