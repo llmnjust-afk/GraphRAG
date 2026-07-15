@@ -133,7 +133,7 @@ Dataset & Method & Factoid R@5 & Factoid F1 & Global F1 & Entities & Communities
  & B2 Naive & 0.443 & 0.282 & 0.194 & 13,905 & 0 & 10.0$\times$ \\
  & B3 +Dedup & 0.450 & 0.272 & 0.194 & 13,864 & 0 & 10.0$\times$ \\
  & B4 +Relink & 0.450 & 0.279 & 0.194 & 13,864 & 0 & 10.0$\times$ \\
- & IGV (Ours) & 0.450 & 0.279 & \textbf{0.375} & 13,864 & 604 & 10.0$\times$ \\
+ & IGV (Ours) & 0.450 & 0.279 & \textbf{0.375} & 13,864 & 612 & 10.0$\times$ \\
  & VectorRAG & 0.610 & 0.361 & 0.396 & --- & --- & --- \\
 \midrule
 \multirow{6}{*}{MuSiQue} & B1 Rebuild & 0.350 & 0.111 & 0.206 & 11,795 & 0 & 1.0$\times$ \\
@@ -154,7 +154,7 @@ Dataset & Method & Factoid R@5 & Factoid F1 & Global F1 & Entities & Communities
  & B2 Naive & 0.370 & 0.315 & 0.203 & 15,170 & 0 & 10.0$\times$ \\
  & B3 +Dedup & 0.370 & 0.317 & 0.203 & 15,132 & 0 & 10.0$\times$ \\
  & B4 +Relink & 0.370 & 0.320 & 0.203 & 15,132 & 0 & 10.0$\times$ \\
- & IGV (Ours) & 0.370 & 0.320 & \textbf{0.281} & 15,132 & 547 & 10.0$\times$ \\
+ & IGV (Ours) & 0.370 & 0.320 & \textbf{0.281} & 15,132 & 548 & 10.0$\times$ \\
  & VectorRAG & 0.595 & 0.442 & 0.273 & --- & --- & --- \\
 \bottomrule
 \end{tabular}
@@ -214,7 +214,7 @@ Figure~\ref{fig:improve} shows IGV's global F1 improvement over B2. The communit
 
 \subsection{Entity Deduplication and Community Statistics}
 
-Figure~\ref{fig:ent} shows entity counts and community counts. Deduplication reduces entity count by 0.1--0.3\% (conservative $\tau=0.95$), primarily merging case variants (e.g., ``Winner''/``WINNER''). IGV maintains 236--604 communities across datasets, providing the thematic structure for global QA retrieval.
+Figure~\ref{fig:ent} shows entity counts and community counts. Deduplication reduces entity count by 0.1--0.3\% (conservative $\tau=0.95$), primarily merging case variants (e.g., ``Winner''/``WINNER''). IGV maintains 236--612 communities across datasets, providing the thematic structure for global QA retrieval.
 
 \begin{figure}[t]
 \centering
